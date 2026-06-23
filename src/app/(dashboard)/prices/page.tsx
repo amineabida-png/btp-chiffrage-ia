@@ -36,9 +36,13 @@ export default function Prices() {
 
   return (
     <div className="p-8">
-      <h1 className="mb-6 text-2xl font-bold">Bibliothèque de prix — Maroc</h1>
+      <style>{`@media print { aside, .no-print { display: none !important; } main { width: 100% !important; } .card { box-shadow: none !important; } }`}</style>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Bibliothèque de prix — Maroc</h1>
+        <button onClick={() => window.print()} className="btn btn-ghost no-print">🖨️ Imprimer</button>
+      </div>
 
-      <form onSubmit={ajouter} className="card mb-6 grid gap-3 md:grid-cols-5">
+      <form onSubmit={ajouter} className="card mb-6 grid gap-3 md:grid-cols-5 no-print">
         <select className="input" value={form.corpsEtat} onChange={(e) => setForm({ ...form, corpsEtat: e.target.value })}>
           {CORPS.map((c) => <option key={c}>{c}</option>)}
         </select>
@@ -50,7 +54,7 @@ export default function Prices() {
         </div>
       </form>
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2 no-print">
         <button onClick={() => setCorps('')} className={`badge ${!corps ? 'bg-maroc-vert text-white' : 'bg-slate-200 text-slate-600'} cursor-pointer`}>Tous</button>
         {CORPS.map((c) => (
           <button key={c} onClick={() => setCorps(c)} className={`badge cursor-pointer ${corps === c ? 'bg-maroc-vert text-white' : 'bg-slate-200 text-slate-600'}`}>{c}</button>

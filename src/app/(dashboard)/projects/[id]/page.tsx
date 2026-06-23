@@ -28,8 +28,16 @@ export default function ProjetDetail() {
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await res.json();
     setUploading(false);
+    e.target.value = '';
     if (res.ok) { setMsg(`${data.documents.length} document(s) importé(s).`); charger(); }
     else setMsg(data.error || 'Erreur upload');
+  }
+
+  async function supprimerDoc(docId: string, nom: string) {
+    if (!confirm(`Supprimer le document « ${nom} » ?`)) return;
+    const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+    if (res.ok) { setMsg('Document supprimé.'); charger(); }
+    else setMsg('Suppression impossible.');
   }
 
   async function lancerAnalyse() {
@@ -46,22 +54,38 @@ export default function ProjetDetail() {
   if (!projet) return <div className="p-8 text-slate-500">Chargement…</div>;
 
   const totalHT = (projet.articles || []).reduce((s: number, a: any) => s + (a.montantTotal || 0), 0);
+  // Sur écran on n'affiche que l'onglet actif ; à l'impression, toutes les sections s'affichent.
+  const sec = (k: string) => (onglet === k ? 'section-impr' : 'section-impr hide-screen');
 
   return (
     <div className="p-8">
+      <style>{`
+        .hide-screen { display: none; }
+        @media print {
+          @page { margin: 12mm; }
+          aside, .no-print { display: none !important; }
+          .hide-screen { display: block !important; }
+          .section-impr { break-inside: avoid; margin-bottom: 14px; }
+          .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          main { width: 100% !important; }
+        }
+      `}</style>
+
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{projet.objet}</h1>
           <p className="text-sm text-slate-500">Statut : {projet.statut} {projet.scoreRisque != null && `· Risque ${projet.scoreRisque}/100`}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 no-print">
+          <button onClick={() => window.print()} className="btn btn-ghost">🖨️ Imprimer le dossier</button>
           <a href={`/api/export/${id}?format=excel`} className="btn btn-ghost">⬇ Excel</a>
           <a href={`/api/export/${id}?format=pdf`} className="btn btn-ghost">⬇ Rapport PDF</a>
         </div>
       </div>
 
-      {/* Zone import + analyse */}
-      <div className="card mb-6">
+      {/* Zone import + analyse (non imprimée) */}
+      <div className="card mb-6 no-print">
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <h3 className="mb-2 font-semibold">1. Importer les documents</h3>
@@ -71,7 +95,12 @@ export default function ProjetDetail() {
             <div className="mt-3 space-y-1">
               {(projet.documents || []).map((d: any) => (
                 <div key={d.id} className="flex items-center justify-between rounded bg-slate-50 px-3 py-1.5 text-xs">
-                  <span>📄 {d.nom}</span><span className="badge bg-white text-slate-500">{d.type}</span>
+                  <span className="truncate">📄 {d.nom}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="badge bg-white text-slate-500">{d.type}</span>
+                    <button onClick={() => supprimerDoc(d.id, d.nom)} title="Supprimer"
+                      className="rounded px-1.5 text-red-600 hover:bg-red-100">✕</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -96,15 +125,17 @@ export default function ProjetDetail() {
         {msg && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</p>}
       </div>
 
-      {/* Onglets */}
-      <div className="mb-4 flex gap-2 border-b">
+      {/* Onglets (non imprimés) */}
+      <div className="mb-4 flex gap-2 border-b no-print">
         {([['synthese', 'Fiche synthèse'], ['bordereau', `Bordereau chiffré (${(projet.articles || []).length})`], ['plans', `Plans & métré (${(projet.metres || []).length})`], ['risques', `Risques & alertes (${(projet.alertes || []).length + (projet.risques || []).length})`]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setOnglet(k)}
             className={`px-4 py-2 text-sm font-medium ${onglet === k ? 'border-b-2 border-maroc-vert text-maroc-vert' : 'text-slate-500'}`}>{l}</button>
         ))}
       </div>
 
-      {onglet === 'synthese' && (
+      {/* SECTION 1 — Fiche synthèse */}
+      <div className={sec('synthese')}>
+        <h2 className="mb-2 hidden text-lg font-bold print:block">Fiche synthèse — {projet.objet}</h2>
         <div className="card">
           <table className="w-full text-sm">
             <tbody>
@@ -125,9 +156,11 @@ export default function ProjetDetail() {
             </tbody>
           </table>
         </div>
-      )}
+      </div>
 
-      {onglet === 'bordereau' && (
+      {/* SECTION 2 — Bordereau chiffré */}
+      <div className={sec('bordereau')}>
+        <h2 className="mb-2 hidden text-lg font-bold print:block">Bordereau chiffré</h2>
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b bg-slate-50 text-left text-slate-500">
@@ -139,7 +172,7 @@ export default function ProjetDetail() {
             </thead>
             <tbody>
               {(projet.articles || []).map((a: any) => (
-                <tr key={a.id} className="border-b last:border-0 hover:bg-slate-50">
+                <tr key={a.id} className="border-b last:border-0">
                   <td className="p-2">{a.numeroPrix}</td>
                   <td className="p-2 max-w-md">{a.designation}</td>
                   <td className="p-2">{a.unite}</td>
@@ -162,9 +195,11 @@ export default function ProjetDetail() {
             )}
           </table>
         </div>
-      )}
+      </div>
 
-      {onglet === 'plans' && (
+      {/* SECTION 3 — Plans & métré */}
+      <div className={sec('plans')}>
+        <h2 className="mb-2 hidden text-lg font-bold print:block">Plans & métré</h2>
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b bg-slate-50 text-left text-slate-500">
@@ -176,7 +211,7 @@ export default function ProjetDetail() {
             </thead>
             <tbody>
               {(projet.metres || []).map((m: any) => (
-                <tr key={m.id} className="border-b last:border-0 hover:bg-slate-50">
+                <tr key={m.id} className="border-b last:border-0">
                   <td className="p-3">{m.element}</td>
                   <td className="p-3">{m.unite}</td>
                   <td className="p-3 text-right">{m.quantiteDetectee}</td>
@@ -189,15 +224,17 @@ export default function ProjetDetail() {
               ))}
               {(projet.metres || []).length === 0 && (
                 <tr><td colSpan={6} className="p-6 text-center text-slate-400">
-                  Aucun métré. Importez un document nommé « plan… » (PDF ou image) : le métré est extrait automatiquement à l'import.
+                  Aucun métré. Importez un document nommé « plan… » (PDF ou image) : le métré est extrait automatiquement.
                 </td></tr>
               )}
             </tbody>
           </table>
         </div>
-      )}
+      </div>
 
-      {onglet === 'risques' && (
+      {/* SECTION 4 — Risques & alertes */}
+      <div className={sec('risques')}>
+        <h2 className="mb-2 hidden text-lg font-bold print:block">Risques & alertes</h2>
         <div className="space-y-4">
           <div className="card">
             <h3 className="mb-3 font-semibold">⚠️ Alertes de cohérence</h3>
@@ -221,7 +258,7 @@ export default function ProjetDetail() {
               ))}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
