@@ -8,54 +8,99 @@ const client = new OpenAI({
 const MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 const VISION = process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b';
 
-// Adaptés à la limite gratuite Groq (8 000 tokens/minute)
-const MAX_OUT = Number(process.env.GROQ_MAX_TOKENS || 2048);
-const MAX_IN_CHARS = Number(process.env.GROQ_MAX_INPUT_CHARS || 11000); // ~3300 tokens
+const MAX_OUT = Number(process.env.GROQ_MAX_TOKENS || 3000);
+const MAX_IN_CHARS = Number(process.env.GROQ_MAX_INPUT_CHARS || 11000);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Parsing JSON tolérant : répare les réponses tronquées ou imparfaites */
 function nettoyerJSON(text: string): any {
-  let t = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  let t = (text || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
   t = t.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+  // 1) tentative directe
   try { return JSON.parse(t); } catch {}
-  const m = t.match(/\{[\s\S]*\}/);
-  if (m) return JSON.parse(m[0]);
+
+  // 2) isoler le bloc { ... }
+  const start = t.indexOf('{');
+  if (start === -1) throw new Error('Aucun JSON trouvé');
+  t = t.slice(start);
+
+  try { return JSON.parse(t); } catch {}
+
+  // 3) réparation d'un JSON tronqué : on retire la fin incomplète,
+  //    puis on referme les crochets/accolades ouverts.
+  const reparer = (s: string): any | null => {
+    // supprime une éventuelle virgule/élément final incomplet
+    let cleaned = s.replace(/,\s*$/, '');
+    // enlève le dernier fragment après la dernière virgule s'il est incomplet
+    for (let cut = cleaned.length; cut > 0; cut--) {
+      let candidate = cleaned.slice(0, cut);
+      // équilibrer les guillemets
+      const quotes = (candidate.match(/(?<!\\)"/g) || []).length;
+      if (quotes % 2 !== 0) continue; // guillemet ouvert -> on raccourcit
+      // fermer les structures ouvertes
+      let depthC = 0, depthA = 0;
+      for (const ch of candidate) {
+        if (ch === '{') depthC++;
+        else if (ch === '}') depthC--;
+        else if (ch === '[') depthA++;
+        else if (ch === ']') depthA--;
+      }
+      candidate = candidate.replace(/,\s*$/, '');
+      candidate += ']'.repeat(Math.max(0, depthA)) + '}'.repeat(Math.max(0, depthC));
+      try { return JSON.parse(candidate); } catch { /* on raccourcit encore */ }
+    }
+    return null;
+  };
+
+  const repaired = reparer(t);
+  if (repaired) return repaired;
+
+  // 4) dernier recours : la plus grande sous-chaîne {...} parsable
+  const last = t.lastIndexOf('}');
+  if (last > 0) {
+    try { return JSON.parse(t.slice(0, last + 1)); } catch {}
+  }
   throw new Error('Réponse IA non parsable');
 }
 
-/** Appel chat avec réessais automatiques sur limite de débit (429) et requête trop grosse (413) */
-async function chat(messages: any[], opts: { maxTokens?: number; vision?: boolean } = {}): Promise<string> {
+async function chat(messages: any[], opts: { maxTokens?: number; vision?: boolean; json?: boolean } = {}): Promise<string> {
   const maxTokens = opts.maxTokens ?? MAX_OUT;
   let msgs = messages;
   let attempt = 0;
   while (true) {
     try {
-      const r = await client.chat.completions.create({
+      const body: any = {
         model: opts.vision ? VISION : MODEL,
-        temperature: 0.2,
+        temperature: 0.1,
         max_tokens: maxTokens,
         messages: msgs,
-      });
+      };
+      if (opts.json) body.response_format = { type: 'json_object' };
+      const r = await client.chat.completions.create(body);
       return (r.choices[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     } catch (e: any) {
       attempt++;
       const status = e?.status || e?.response?.status;
       const msg = String(e?.message || '');
-
-      // Limite de tokens/minute atteinte -> on attend le délai indiqué puis on réessaie
       if (status === 429 && attempt <= 6) {
         const m = msg.match(/try again in ([\d.]+)s/i);
         const wait = m ? Math.ceil(parseFloat(m[1]) * 1000) + 800 : 20000;
         await sleep(Math.min(wait, 65000));
         continue;
       }
-      // Requête trop grosse -> on réduit le contenu de moitié et on réessaie
       if (status === 413 && attempt <= 4) {
         msgs = msgs.map((mm: any) =>
           mm.role === 'user' && typeof mm.content === 'string'
             ? { ...mm, content: mm.content.slice(0, Math.floor(mm.content.length / 2)) }
             : mm
         );
+        continue;
+      }
+      // response_format non supporté par le modèle -> on réessaie sans
+      if (opts.json && /response_format|json/i.test(msg) && attempt <= 2) {
+        opts = { ...opts, json: false };
         continue;
       }
       throw e;
@@ -65,9 +110,9 @@ async function chat(messages: any[], opts: { maxTokens?: number; vision?: boolea
 
 export async function askJSON(systeme: string, contenu: string): Promise<any> {
   const out = await chat([
-    { role: 'system', content: systeme + ' Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour.' },
+    { role: 'system', content: systeme + ' Réponds UNIQUEMENT avec un objet JSON valide complet, sans texte autour.' },
     { role: 'user', content: contenu.slice(0, MAX_IN_CHARS) },
-  ]);
+  ], { json: true });
   return nettoyerJSON(out);
 }
 
@@ -78,13 +123,13 @@ export async function askVision(systeme: string, texte: string, dataUrls: string
 }
 
 export async function askVisionJSON(systeme: string, texte: string, dataUrls: string[]): Promise<any> {
-  const out = await askVision(systeme + ' Réponds UNIQUEMENT en JSON valide.', texte, dataUrls);
+  const out = await askVision(systeme + ' Réponds UNIQUEMENT en JSON valide complet.', texte, dataUrls);
   return nettoyerJSON(out);
 }
 
 export async function analyserMarche(texte: string) {
-  const systeme = `Tu es un expert en marchés publics BTP au Maroc (décret n°2-22-431). Montants en Dirhams (MAD).`;
-  const contenu = `Analyse ce dossier d'appel d'offres BTP marocain et renvoie ce JSON exact:
+  const systeme = `Tu es un expert en marchés publics BTP au Maroc (décret n°2-22-431). Montants en Dirhams (MAD). Sois concis dans les listes.`;
+  const contenu = `Analyse ce dossier d'appel d'offres BTP marocain et renvoie ce JSON exact (listes: 4 éléments max chacune):
 {"objet":"","maitreOuvrage":"","maitreOeuvre":null,"montantEstimatif":null,"delaiExecution":"","lieuExecution":null,"cautionProvisoire":null,"cautionDefinitive":"","retenueGarantie":"","qualifications":"","classifications":"","penalitesRetard":"","modalitesPaiement":"","revisionPrix":"","conditionsAdministratives":[],"conditionsTechniques":[],"criteresEvaluation":[],"conditionsEliminatoires":[]}
 
 Texte:
@@ -93,8 +138,8 @@ Texte:
 }
 
 export async function extraireArticles(texte: string) {
-  const systeme = `Tu es un métreur expert BTP marocain. Tu extrais les lignes d'un bordereau (BPU) ou détail estimatif (DQE).`;
-  const contenu = `Extrais TOUS les articles. Renvoie:
+  const systeme = `Tu es un métreur expert BTP marocain. Tu extrais les lignes d'un bordereau (BPU) ou détail estimatif (DQE). Désignations courtes.`;
+  const contenu = `Extrais les articles (50 max). Renvoie:
 {"articles":[{"numeroPrix":"","designation":"","unite":"","quantite":0,"observations":null}]}
 Texte:
 """${texte.slice(0, MAX_IN_CHARS)}"""`;
@@ -116,12 +161,12 @@ Renvoie (montants pour UNE unité, MAD HT):
   const out = await chat([
     { role: 'system', content: systeme + ' Réponds UNIQUEMENT en JSON.' },
     { role: 'user', content: contenu.slice(0, MAX_IN_CHARS) },
-  ], { maxTokens: 1200 });
+  ], { maxTokens: 1200, json: true });
   return nettoyerJSON(out);
 }
 
 export async function analyserRisques(texte: string, articles: any[]) {
-  const systeme = `Expert en gestion des risques sur les marchés BTP au Maroc.`;
+  const systeme = `Expert en gestion des risques sur les marchés BTP au Maroc. Sois concis (6 risques et 6 alertes max).`;
   const resume = articles.slice(0, 40).map((a) => `${a.numeroPrix}|${a.designation}|${a.unite}|${a.quantite}`).join('\n').slice(0, 4000);
   const contenu = `Analyse les risques et la cohérence.
 Extrait CPS/CCTP:
