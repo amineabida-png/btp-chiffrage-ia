@@ -1,0 +1,207 @@
+// Schéma de base de données — BTP Chiffrage IA Maroc
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm]
+}
+
+enum Role {
+  ADMIN          // Administrateur
+  DIRECTEUR      // Directeur
+  METREUR        // Métreur
+  CHARGE_ETUDE   // Chargé d'étude
+  CONSULTATION   // Consultation seule
+}
+
+enum StatutProjet {
+  BROUILLON
+  EN_ANALYSE
+  ANALYSE_TERMINEE
+  CHIFFRE
+  SOUMIS
+  GAGNE
+  PERDU
+}
+
+enum TypeDocument {
+  BPU            // Bordereau des Prix
+  DQE            // Détail Estimatif / Quantitatif
+  CPS            // Cahier des Prescriptions Spéciales
+  CCTP
+  RC             // Règlement de Consultation
+  PLAN
+  AUTRE
+}
+
+enum NiveauRisque {
+  FAIBLE
+  MOYEN
+  ELEVE
+  CRITIQUE
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  nom          String
+  motDePasse   String
+  role         Role      @default(CHARGE_ETUDE)
+  entreprise   String?
+  actif        Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  projets      Projet[]
+  modifications HistoriqueModification[]
+}
+
+model Projet {
+  id              String        @id @default(cuid())
+  reference       String?       // Référence de l'appel d'offres
+  objet           String
+  maitreOuvrage   String?       // Maître d'ouvrage
+  maitreOeuvre    String?       // Maître d'œuvre
+  montantEstimatif Float?       // en MAD
+  delaiExecution  String?
+  lieuExecution   String?
+  // Garanties (contexte marocain)
+  cautionProvisoire   Float?    // en MAD
+  cautionDefinitive   String?   // souvent en %
+  retenueGarantie     String?   // souvent 7% ou 10%
+  // Qualifications & classifications marocaines
+  qualifications  String?
+  classifications String?
+  // Clauses
+  penalitesRetard String?
+  modalitesPaiement String?
+  revisionPrix    String?
+  dateLimiteRemise DateTime?
+  // Synthèse IA
+  ficheSynthese   Json?         // fiche complète extraite par l'IA
+  scoreRisque     Int?          // 0-100
+  statut          StatutProjet  @default(BROUILLON)
+
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents       Document[]
+  articles        Article[]
+  alertes         Alerte[]
+  risques         Risque[]
+  metres          MetrePlan[]
+  modifications   HistoriqueModification[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Document {
+  id          String        @id @default(cuid())
+  nom         String
+  type        TypeDocument  @default(AUTRE)
+  mimeType    String
+  taille      Int
+  texteExtrait String?      @db.Text   // texte OCR / parsing
+  projetId    String
+  projet      Projet        @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+}
+
+model Article {
+  id            String   @id @default(cuid())
+  numeroPrix    String   // N° de prix
+  designation   String   @db.Text
+  unite         String   // U, M2, M3, ML, KG, FT, ...
+  quantite      Float    @default(0)
+  observations  String?
+
+  // Sous-détail de prix (déboursé sec)
+  prixFournitures   Float @default(0)
+  prixMainOeuvre    Float @default(0)
+  prixMateriel      Float @default(0)
+  prixEngins        Float @default(0)
+  prixTransport     Float @default(0)
+  prixSousTraitance Float @default(0)
+  sousDetail        Json?  // décomposition détaillée (matériaux, rendements...)
+
+  // Calculs de prix
+  deboursesSec   Float @default(0)
+  fraisChantier  Float @default(0)
+  fraisGeneraux  Float @default(0)
+  aleas          Float @default(0)
+  marge          Float @default(0)
+  prixRevient    Float @default(0)
+  prixUnitaire   Float @default(0)   // prix de vente unitaire HT
+  montantTotal   Float @default(0)   // prixUnitaire * quantite
+
+  sourceIA       Boolean @default(false)  // chiffré par l'IA
+  projetId       String
+  projet         Projet  @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Alerte {
+  id          String   @id @default(cuid())
+  type        String   // QUANTITE_ANORMALE, ARTICLE_MANQUANT, INCOHERENCE, ERREUR_CALCUL...
+  message     String   @db.Text
+  gravite     NiveauRisque @default(MOYEN)
+  projetId    String
+  projet      Projet   @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model Risque {
+  id          String       @id @default(cuid())
+  categorie   String       // TECHNIQUE, FINANCIER, CONTRACTUEL, DELAI, ADMINISTRATIF
+  description String       @db.Text
+  niveau      NiveauRisque @default(MOYEN)
+  recommandation String?   @db.Text
+  projetId    String
+  projet      Projet       @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+}
+
+// Base de données des prix Maroc (évolutive, historisée)
+model PrixReference {
+  id           String   @id @default(cuid())
+  corpsEtat    String   // BATIMENT, VRD, ASSAINISSEMENT, AEP, ELECTRICITE, ECLAIRAGE, GENIE_CIVIL, ROUTES, ESPACES_VERTS, HYDRAULIQUE
+  designation  String   @db.Text
+  unite        String
+  prixUnitaire Float    // MAD HT
+  region       String?  @default("National")
+  source       String?  // projet d'origine
+  annee        Int      @default(2026)
+  embedding    Float[]  @default([])   // vecteur sémantique (recherche vectorielle)
+  createdAt    DateTime @default(now())
+
+  @@index([corpsEtat])
+}
+
+// Quantités détectées automatiquement sur les plans (métré)
+model MetrePlan {
+  id              String   @id @default(cuid())
+  element         String   // ex: "Béton fondations", "Surface dallage", "Terrassement"
+  unite           String   // M3, M2, ML, KG...
+  quantiteDetectee Float
+  source          String?  // nom du plan / nature de la détection
+  quantiteDQE     Float?   // quantité correspondante au DQE (après comparaison)
+  ecartPourcent   Float?   // écart % vs DQE
+  projetId        String
+  projet          Projet   @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+}
+
+model HistoriqueModification {
+  id         String   @id @default(cuid())
+  action     String
+  details    Json?
+  projetId   String?
+  projet     Projet?  @relation(fields: [projetId], references: [id], onDelete: SetNull)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+}
