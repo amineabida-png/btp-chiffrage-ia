@@ -9,6 +9,20 @@ import { comparerPlanDQE } from '@/lib/plans';
 
 export const maxDuration = 300;
 
+// Convertit une valeur IA (liste, objet, nombre...) en texte propre ou null
+function S(v: any): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  if (Array.isArray(v)) return v.filter(Boolean).map((x) => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ; ') || null;
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+// Convertit en nombre ou null
+function N(v: any): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^\d.,-]/g, '').replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
@@ -53,7 +67,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await prisma.article.create({
         data: {
           numeroPrix: String(art.numeroPrix || ''), designation: String(art.designation || ''),
-          unite: String(art.unite || 'U'), quantite, observations: art.observations || null,
+          unite: String(art.unite || 'U'), quantite, observations: S(art.observations),
           prixFournitures: sd.prixFournitures || 0, prixMainOeuvre: sd.prixMainOeuvre || 0,
           prixMateriel: sd.prixMateriel || 0, prixEngins: sd.prixEngins || 0,
           prixTransport: sd.prixTransport || 0, prixSousTraitance: sd.prixSousTraitance || 0,
@@ -99,14 +113,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await prisma.projet.update({
       where: { id: projet.id },
       data: {
-        objet: fiche.objet || projet.objet, maitreOuvrage: fiche.maitreOuvrage || null,
-        maitreOeuvre: fiche.maitreOeuvre || null, montantEstimatif: fiche.montantEstimatif || null,
-        delaiExecution: fiche.delaiExecution || null, lieuExecution: fiche.lieuExecution || null,
-        cautionProvisoire: fiche.cautionProvisoire || null, cautionDefinitive: fiche.cautionDefinitive || null,
-        retenueGarantie: fiche.retenueGarantie || null, qualifications: fiche.qualifications || null,
-        classifications: fiche.classifications || null, penalitesRetard: fiche.penalitesRetard || null,
-        modalitesPaiement: fiche.modalitesPaiement || null, revisionPrix: fiche.revisionPrix || null,
-        ficheSynthese: fiche, scoreRisque: risquesData.scoreRisque || 0, statut: 'CHIFFRE',
+        objet: S(fiche.objet) || projet.objet, maitreOuvrage: S(fiche.maitreOuvrage),
+        maitreOeuvre: S(fiche.maitreOeuvre), montantEstimatif: N(fiche.montantEstimatif),
+        delaiExecution: S(fiche.delaiExecution), lieuExecution: S(fiche.lieuExecution),
+        cautionProvisoire: N(fiche.cautionProvisoire), cautionDefinitive: S(fiche.cautionDefinitive),
+        retenueGarantie: S(fiche.retenueGarantie), qualifications: S(fiche.qualifications),
+        classifications: S(fiche.classifications), penalitesRetard: S(fiche.penalitesRetard),
+        modalitesPaiement: S(fiche.modalitesPaiement), revisionPrix: S(fiche.revisionPrix),
+        ficheSynthese: fiche, scoreRisque: Number(risquesData.scoreRisque) || 0, statut: 'CHIFFRE',
       },
     });
 
