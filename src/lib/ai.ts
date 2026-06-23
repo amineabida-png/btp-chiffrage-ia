@@ -177,3 +177,41 @@ Renvoie:
 {"scoreRisque":0,"risques":[{"categorie":"TECHNIQUE|FINANCIER|CONTRACTUEL|DELAI|ADMINISTRATIF","description":"","niveau":"FAIBLE|MOYEN|ELEVE|CRITIQUE","recommandation":""}],"alertes":[{"type":"QUANTITE_ANORMALE|ARTICLE_MANQUANT|INCOHERENCE|ERREUR_CALCUL|RISQUE_FINANCIER|OUBLI","message":"","gravite":"FAIBLE|MOYEN|ELEVE|CRITIQUE"}]}`;
   return askJSON(systeme, contenu);
 }
+
+/** Découpe un texte volumineux en morceaux <= taille, en respectant les séparateurs de documents/feuilles */
+function morceaux(texte: string, taille = MAX_IN_CHARS): string[] {
+  const parts = texte.split(/\n(?==== )/); // sépare par "=== Document ===" / "=== Feuille: ... ==="
+  const out: string[] = [];
+  let buf = '';
+  for (const p of parts) {
+    if (p.length > taille) {
+      if (buf) { out.push(buf); buf = ''; }
+      for (let i = 0; i < p.length; i += taille) out.push(p.slice(i, i + taille));
+    } else if (buf.length + p.length > taille) {
+      if (buf) out.push(buf);
+      buf = p;
+    } else {
+      buf += (buf ? '\n' : '') + p;
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
+/** Extraction des articles sur un GROS document : traite chaque morceau (feuille/bloc) et fusionne, sans rien oublier */
+export async function extraireArticlesGros(texte: string, maxMorceaux = 14) {
+  const chunks = morceaux(texte, MAX_IN_CHARS).slice(0, maxMorceaux);
+  const tous: any[] = [];
+  const vus = new Set<string>();
+  for (const c of chunks) {
+    let arts: any[] = [];
+    try { arts = await extraireArticles(c); } catch { /* on continue avec les autres morceaux */ }
+    for (const a of arts) {
+      const cle = (String(a.numeroPrix || '') + '|' + String(a.designation || '')).toLowerCase().trim();
+      if (cle === '|' || vus.has(cle)) continue;
+      vus.add(cle);
+      tous.push(a);
+    }
+  }
+  return tous;
+}

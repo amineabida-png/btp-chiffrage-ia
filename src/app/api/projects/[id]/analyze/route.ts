@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { analyserMarche, extraireArticles, chiffrerArticle, analyserRisques } from '@/lib/ai';
+import { analyserMarche, extraireArticlesGros, chiffrerArticle, analyserRisques } from '@/lib/ai';
 import { calculerPrix, COEFFICIENTS_DEFAUT } from '@/lib/pricing';
 import { prixSimilaires, apprendrePrix } from '@/lib/learning';
 import { comparerPlanDQE } from '@/lib/plans';
@@ -47,15 +47,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const fiche = await analyserMarche(texteComplet);
 
     // 2. Articles
-    const articlesBruts = await extraireArticles(texteComplet);
+    const articlesBruts = await extraireArticlesGros(texteComplet);
     await prisma.article.deleteMany({ where: { projetId: projet.id } });
 
-    // 3. Chiffrage IA (assisté par recherche de similarité dans la base)
-    const aChiffrer = articlesBruts.slice(0, 40);
-    for (const art of aChiffrer) {
-      const similaires = await prixSimilaires(String(art.designation || ''), 8);
+    // 3. Chiffrage IA (assisté par recherche de similarité). Tous les articles sont enregistrés ;
+    //    le chiffrage IA porte sur les premiers (limite gratuite), le reste reste à 0 (modifiable).
+    const MAX_CHIFFRAGE = Number(process.env.MAX_ARTICLES_CHIFFRAGE || 40);
+    let i = 0;
+    for (const art of articlesBruts) {
       let sd: any = { prixFournitures: 0, prixMainOeuvre: 0, prixMateriel: 0, prixEngins: 0, prixTransport: 0, prixSousTraitance: 0, sousDetail: null };
-      try { sd = await chiffrerArticle({ designation: art.designation, unite: art.unite }, similaires); } catch {}
+      let chiffre = false;
+      if (i < MAX_CHIFFRAGE) {
+        const similaires = await prixSimilaires(String(art.designation || ''), 8);
+        try { sd = await chiffrerArticle({ designation: art.designation, unite: art.unite }, similaires); chiffre = true; } catch {}
+      }
+      i++;
 
       const calc = calculerPrix({
         prixFournitures: sd.prixFournitures || 0, prixMainOeuvre: sd.prixMainOeuvre || 0,
@@ -73,10 +79,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           prixTransport: sd.prixTransport || 0, prixSousTraitance: sd.prixSousTraitance || 0,
           sousDetail: sd.sousDetail || undefined, ...calc,
           montantTotal: Math.round(calc.prixUnitaire * quantite * 100) / 100,
-          sourceIA: true, projetId: projet.id,
+          sourceIA: chiffre, projetId: projet.id,
         },
       });
     }
+    const aChiffrer = articlesBruts;
 
     // 4. Risques + alertes
     let risquesData: any = { scoreRisque: 0, risques: [], alertes: [] };
