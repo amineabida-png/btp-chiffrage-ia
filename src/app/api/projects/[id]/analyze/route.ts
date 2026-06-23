@@ -50,36 +50,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const articlesBruts = await extraireArticlesGros(texteComplet);
     await prisma.article.deleteMany({ where: { projetId: projet.id } });
 
-    // 3. Chiffrage IA (assisté par recherche de similarité). Tous les articles sont enregistrés ;
-    //    le chiffrage IA porte sur les premiers (limite gratuite), le reste reste à 0 (modifiable).
-    const MAX_CHIFFRAGE = Number(process.env.MAX_ARTICLES_CHIFFRAGE || 40);
-    let i = 0;
+    // 3. Chiffrage depuis la BIBLIOTHÈQUE UNIQUEMENT (traçable). L'IA n'invente aucun prix.
+    const SEUIL = Number(process.env.PRICE_MATCH_THRESHOLD || 0.58);
+    let sansPrix = 0;
     for (const art of articlesBruts) {
-      let sd: any = { prixFournitures: 0, prixMainOeuvre: 0, prixMateriel: 0, prixEngins: 0, prixTransport: 0, prixSousTraitance: 0, sousDetail: null };
-      let chiffre = false;
-      if (i < MAX_CHIFFRAGE) {
-        const similaires = await prixSimilaires(String(art.designation || ''), 8);
-        try { sd = await chiffrerArticle({ designation: art.designation, unite: art.unite }, similaires); chiffre = true; } catch {}
-      }
-      i++;
-
-      const calc = calculerPrix({
-        prixFournitures: sd.prixFournitures || 0, prixMainOeuvre: sd.prixMainOeuvre || 0,
-        prixMateriel: sd.prixMateriel || 0, prixEngins: sd.prixEngins || 0,
-        prixTransport: sd.prixTransport || 0, prixSousTraitance: sd.prixSousTraitance || 0,
-      }, coeffs);
-
+      const designation = String(art.designation || '');
+      const unite = String(art.unite || 'U');
       const quantite = Number(art.quantite) || 0;
+
+      const matches = await prixSimilaires(designation, 6);
+      // meilleure correspondance: même unité + score suffisant ; à défaut, score très élevé
+      const best = matches.find((m: any) => (m.unite || '').toUpperCase() === unite.toUpperCase() && m.score >= SEUIL)
+        || (matches[0] && matches[0].score >= 0.85 ? matches[0] : null);
+
+      let prixUnitaire = 0; let sourcePrix: string | null = null;
+      if (best) { prixUnitaire = best.prixUnitaire; sourcePrix = `${best.designation} (${Math.round(best.score * 100)}%)`; }
+      else sansPrix++;
+
       await prisma.article.create({
         data: {
-          numeroPrix: String(art.numeroPrix || ''), designation: String(art.designation || ''),
-          unite: String(art.unite || 'U'), quantite, observations: S(art.observations),
-          prixFournitures: sd.prixFournitures || 0, prixMainOeuvre: sd.prixMainOeuvre || 0,
-          prixMateriel: sd.prixMateriel || 0, prixEngins: sd.prixEngins || 0,
-          prixTransport: sd.prixTransport || 0, prixSousTraitance: sd.prixSousTraitance || 0,
-          sousDetail: sd.sousDetail || undefined, ...calc,
-          montantTotal: Math.round(calc.prixUnitaire * quantite * 100) / 100,
-          sourceIA: chiffre, projetId: projet.id,
+          numeroPrix: String(art.numeroPrix || ''), designation, unite, quantite,
+          observations: S(art.observations),
+          prixFournitures: 0, prixMainOeuvre: 0, prixMateriel: 0, prixEngins: 0, prixTransport: 0, prixSousTraitance: 0,
+          deboursesSec: 0, fraisChantier: 0, fraisGeneraux: 0, aleas: 0, marge: 0,
+          prixRevient: prixUnitaire, prixUnitaire,
+          montantTotal: Math.round(prixUnitaire * quantite * 100) / 100,
+          sourceIA: false, sourcePrix, projetId: projet.id,
         },
       });
     }
@@ -94,6 +90,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await prisma.alerte.create({ data: { type: a.type || 'INCOHERENCE', message: a.message || '', gravite: a.gravite || 'MOYEN', projetId: projet.id } });
     for (const r of risquesData.risques || [])
       await prisma.risque.create({ data: { categorie: r.categorie || 'TECHNIQUE', description: r.description || '', niveau: r.niveau || 'MOYEN', recommandation: r.recommandation || null, projetId: projet.id } });
+
+    // Alerte: articles sans prix en base (à chiffrer manuellement)
+    if (sansPrix > 0) {
+      await prisma.alerte.create({
+        data: {
+          type: 'A_CHIFFRER',
+          message: `${sansPrix} article(s) sans correspondance fiable dans la bibliothèque de prix : à chiffrer manuellement (prix = 0). Enrichissez la bibliothèque pour les retrouver automatiquement.`,
+          gravite: sansPrix > articlesBruts.length / 2 ? 'ELEVE' : 'MOYEN',
+          projetId: projet.id,
+        },
+      });
+    }
 
     // 5. Comparaison Plans (métré) vs DQE -> écarts
     if (projet.metres.length) {
@@ -131,14 +139,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       },
     });
 
-    // 7. Apprentissage continu (enrichissement de la base de prix)
-    const articlesCrees = await prisma.article.findMany({ where: { projetId: projet.id } });
-    await apprendrePrix(
-      articlesCrees.map((a: any) => ({ designation: a.designation, unite: a.unite, prixUnitaire: a.prixUnitaire })),
-      projet.objet
-    );
-
-    return NextResponse.json({ ok: true, articles: aChiffrer.length, scoreRisque: risquesData.scoreRisque, metres: projet.metres.length });
+    return NextResponse.json({ ok: true, articles: aChiffrer.length, sansPrix, scoreRisque: risquesData.scoreRisque, metres: projet.metres.length });
   } catch (e: any) {
     await prisma.projet.update({ where: { id: projet.id }, data: { statut: 'BROUILLON' } });
     return NextResponse.json({ error: 'Erreur analyse IA: ' + (e.message || '') }, { status: 500 });

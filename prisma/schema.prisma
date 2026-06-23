@@ -138,6 +138,7 @@ model Article {
   montantTotal   Float @default(0)   // prixUnitaire * quantite
 
   sourceIA       Boolean @default(false)  // chiffré par l'IA
+  sourcePrix     String?                  // origine du prix (référence bibliothèque)
   projetId       String
   projet         Projet  @relation(fields: [projetId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())

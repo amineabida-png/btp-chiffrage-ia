@@ -166,7 +166,7 @@ export default function ProjetDetail() {
             <thead className="border-b bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="p-2">N°</th><th className="p-2">Désignation</th><th className="p-2">U</th>
-                <th className="p-2 text-right">Qté</th><th className="p-2 text-right">Déb. sec</th>
+                <th className="p-2 text-right">Qté</th><th className="p-2">Source du prix</th>
                 <th className="p-2 text-right">P.U. HT</th><th className="p-2 text-right">Montant HT</th>
               </tr>
             </thead>
@@ -177,7 +177,7 @@ export default function ProjetDetail() {
                   <td className="p-2 max-w-md">{a.designation}</td>
                   <td className="p-2">{a.unite}</td>
                   <td className="p-2 text-right">{a.quantite}</td>
-                  <td className="p-2 text-right text-slate-500">{mad(a.deboursesSec)}</td>
+                  <td className="p-2 text-xs">{a.sourcePrix ? <span className="text-slate-500">{a.sourcePrix}</span> : <span className="badge bg-amber-100 text-amber-800">à chiffrer</span>}</td>
                   <td className="p-2 text-right font-medium">{mad(a.prixUnitaire)}</td>
                   <td className="p-2 text-right font-semibold">{mad(a.montantTotal)}</td>
                 </tr>
