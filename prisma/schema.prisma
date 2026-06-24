@@ -88,7 +88,6 @@ model Projet {
   userId          String
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents       Document[]
-  articles        Article[]
   alertes         Alerte[]
   risques         Risque[]
   metres          MetrePlan[]
@@ -110,40 +109,6 @@ model Document {
   createdAt   DateTime      @default(now())
 }
 
-model Article {
-  id            String   @id @default(cuid())
-  numeroPrix    String   // N° de prix
-  designation   String   @db.Text
-  unite         String   // U, M2, M3, ML, KG, FT, ...
-  quantite      Float    @default(0)
-  observations  String?
-
-  // Sous-détail de prix (déboursé sec)
-  prixFournitures   Float @default(0)
-  prixMainOeuvre    Float @default(0)
-  prixMateriel      Float @default(0)
-  prixEngins        Float @default(0)
-  prixTransport     Float @default(0)
-  prixSousTraitance Float @default(0)
-  sousDetail        Json?  // décomposition détaillée (matériaux, rendements...)
-
-  // Calculs de prix
-  deboursesSec   Float @default(0)
-  fraisChantier  Float @default(0)
-  fraisGeneraux  Float @default(0)
-  aleas          Float @default(0)
-  marge          Float @default(0)
-  prixRevient    Float @default(0)
-  prixUnitaire   Float @default(0)   // prix de vente unitaire HT
-  montantTotal   Float @default(0)   // prixUnitaire * quantite
-
-  sourceIA       Boolean @default(false)  // chiffré par l'IA
-  sourcePrix     String?                  // origine du prix (référence bibliothèque)
-  projetId       String
-  projet         Projet  @relation(fields: [projetId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
 
 model Alerte {
   id          String   @id @default(cuid())
@@ -167,20 +132,6 @@ model Risque {
 }
 
 // Base de données des prix Maroc (évolutive, historisée)
-model PrixReference {
-  id           String   @id @default(cuid())
-  corpsEtat    String   // BATIMENT, VRD, ASSAINISSEMENT, AEP, ELECTRICITE, ECLAIRAGE, GENIE_CIVIL, ROUTES, ESPACES_VERTS, HYDRAULIQUE
-  designation  String   @db.Text
-  unite        String
-  prixUnitaire Float    // MAD HT
-  region       String?  @default("National")
-  source       String?  // projet d'origine
-  annee        Int      @default(2026)
-  embedding    Float[]  @default([])   // vecteur sémantique (recherche vectorielle)
-  createdAt    DateTime @default(now())
-
-  @@index([corpsEtat])
-}
 
 // Quantités détectées automatiquement sur les plans (métré)
 model MetrePlan {

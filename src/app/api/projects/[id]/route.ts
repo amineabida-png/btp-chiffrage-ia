@@ -10,9 +10,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     where: { id: params.id, userId: (session.user as any).id },
     include: {
       documents: true,
-      articles: { orderBy: { numeroPrix: 'asc' } },
       alertes: true,
-      risques: true,
       metres: { orderBy: { createdAt: 'asc' } },
     },
   });

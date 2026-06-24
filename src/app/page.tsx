@@ -16,12 +16,12 @@ export default function Home() {
       <main className="mx-auto max-w-6xl px-6 py-20 text-center">
         <p className="mb-3 inline-block rounded-full bg-white/10 px-4 py-1 text-sm">🇲🇦 Solution 100 % marocaine</p>
         <h1 className="mx-auto max-w-3xl text-5xl font-extrabold leading-tight">
-          Chiffrez vos appels d'offres <span className="text-maroc-vert">BTP</span> en quelques minutes
+          Vos plans <span className="text-maroc-vert">BTP</span> transformés en métré détaillé
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-300">
-          Importez le BPU, le DQE, le CPS et les plans. L'intelligence artificielle analyse le marché,
-          extrait les articles, établit les sous-détails de prix en Dirhams, détecte les risques et génère
-          tous les exports — réduction de plus de 90 % du temps de préparation.
+          Importez vos plans (DXF, PDF ou image). L'application lit la géométrie et les cotes,
+          puis produit un <b>métré structuré et fiable</b> — longueurs, surfaces, volumes et comptages,
+          regroupés par poste, exportables en Excel.
         </p>
         <div className="mt-10 flex justify-center gap-4">
           <Link href="/register" className="btn btn-primary px-6 py-3 text-base">Démarrer gratuitement</Link>
@@ -34,7 +34,7 @@ export default function Home() {
             ['📏 Géométrie exacte (DXF)', 'Lecture de la vraie géométrie par calque : longueurs et surfaces calculées précisément, pas devinées.'],
             ['🏗️ Structuré par poste', 'Ouvrages regroupés par corps d\'état, avec localisation, mode de calcul et observations.'],
             ['🔎 Lecture des cotes', 'L\'IA exploite en priorité les cotes, nomenclatures et tableaux du plan — jamais de quantité inventée.'],
-            ['📊 Export Excel', 'Métré exportable en Excel, prêt à chiffrer ou à transmettre.'],
+            ['📊 Export Excel', 'Métré exportable en Excel, prêt à transmettre ou à chiffrer ailleurs.'],
             ['👥 Multi-utilisateurs', 'Administrateur, directeur, métreur, chargé d\'étude, consultation.'],
           ].map(([t, d]) => (
             <div key={t} className="card bg-white/5 text-white">

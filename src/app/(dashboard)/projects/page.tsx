@@ -28,7 +28,7 @@ export default function Projects() {
   async function supprimer(e: React.MouseEvent, p: any) {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`Supprimer définitivement l'appel d'offres « ${p.objet} » ?\n\nTous ses documents, articles, alertes et métrés seront effacés. Cette action est irréversible.`)) return;
+    if (!confirm(`Supprimer définitivement le métré « ${p.objet} » ?\n\nTous ses plans, lignes de métré et alertes seront effacés. Action irréversible.`)) return;
     setSuppr(p.id);
     const res = await fetch(`/api/projects/${p.id}`, { method: 'DELETE' });
     setSuppr(null);
@@ -38,9 +38,9 @@ export default function Projects() {
 
   return (
     <div className="p-8">
-      <h1 className="mb-6 text-2xl font-bold">Appels d'offres</h1>
+      <h1 className="mb-6 text-2xl font-bold">Mes métrés</h1>
       <form onSubmit={creer} className="card mb-6 flex gap-3">
-        <input className="input" placeholder="Objet du nouvel appel d'offres…" value={objet} onChange={(e) => setObjet(e.target.value)} required />
+        <input className="input" placeholder="Objet du nouveau métré (ex: Villa R+1 Casablanca)…" value={objet} onChange={(e) => setObjet(e.target.value)} required />
         <button className="btn btn-primary whitespace-nowrap" disabled={loading}>{loading ? '…' : '+ Créer'}</button>
       </form>
 
@@ -50,7 +50,7 @@ export default function Projects() {
             <button
               onClick={(e) => supprimer(e, p)}
               disabled={suppr === p.id}
-              title="Supprimer cet appel d'offres"
+              title="Supprimer ce métré"
               className="absolute right-2 top-2 z-10 rounded-md px-2 py-1 text-sm text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
             >
               {suppr === p.id ? '…' : '🗑'}
@@ -62,12 +62,12 @@ export default function Projects() {
               </div>
               <h3 className="font-semibold line-clamp-2">{p.objet}</h3>
               <p className="mt-2 text-xs text-slate-500">
-                {p._count?.documents || 0} docs · {p._count?.articles || 0} articles · {p._count?.alertes || 0} alertes
+                {p._count?.documents || 0} plan(s) · {p._count?.metres || 0} ligne(s) de métré · {p._count?.alertes || 0} alerte(s)
               </p>
             </Link>
           </div>
         ))}
-        {projets.length === 0 && <p className="text-sm text-slate-500">Aucun appel d'offres pour le moment.</p>}
+        {projets.length === 0 && <p className="text-sm text-slate-500">Aucun métré pour le moment.</p>}
       </div>
     </div>
   );

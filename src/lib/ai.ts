@@ -147,24 +147,6 @@ Texte:
   return r.articles || [];
 }
 
-export async function chiffrerArticle(
-  article: { designation: string; unite: string },
-  prixRef: { designation: string; prixUnitaire: number }[]
-) {
-  const systeme = `Économiste de la construction au Maroc. Sous-détails de prix en MAD HT, pratiques marocaines.`;
-  const ref = prixRef.slice(0, 12).map((p) => `- ${p.designation}: ${p.prixUnitaire} MAD`).join('\n');
-  const contenu = `Article: "${article.designation}" — Unité: ${article.unite}
-Prix de référence similaires:
-${ref || 'aucun'}
-Renvoie (montants pour UNE unité, MAD HT):
-{"prixFournitures":0,"prixMainOeuvre":0,"prixMateriel":0,"prixEngins":0,"prixTransport":0,"prixSousTraitance":0,"sousDetail":{"composants":[]},"commentaire":""}`;
-  const out = await chat([
-    { role: 'system', content: systeme + ' Réponds UNIQUEMENT en JSON.' },
-    { role: 'user', content: contenu.slice(0, MAX_IN_CHARS) },
-  ], { maxTokens: 1200, json: true });
-  return nettoyerJSON(out);
-}
-
 export async function analyserRisques(texte: string, articles: any[]) {
   const systeme = `Expert en gestion des risques sur les marchés BTP au Maroc. Sois concis (6 risques et 6 alertes max).`;
   const resume = articles.slice(0, 40).map((a) => `${a.numeroPrix}|${a.designation}|${a.unite}|${a.quantite}`).join('\n').slice(0, 4000);

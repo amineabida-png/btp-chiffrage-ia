@@ -5,8 +5,7 @@ import { signOut } from 'next-auth/react';
 
 const liens = [
   { href: '/dashboard', label: 'Tableau de bord', icon: '📊' },
-  { href: '/projects', label: 'Appels d\'offres', icon: '📁' },
-  { href: '/prices', label: 'Bibliothèque de prix', icon: '💾' },
+  { href: '/projects', label: 'Mes métrés', icon: '📐' },
 ];
 
 export default function SidebarNav({ user }: { user: { name?: string; email?: string; role?: string } }) {
