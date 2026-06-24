@@ -1,11 +1,17 @@
-// Correspondance lexicale robuste (TF-IDF + racinisation + synonymes métier BTP).
-// Tourne en pur calcul Node : ne dépend ni des embeddings ni de pg_trgm.
+// Correspondance lexicale robuste pour le chiffrage depuis la bibliothèque.
+// TF-IDF sur le "cœur" de la désignation + chevauchement pondéré + racinisation + synonymes BTP.
+// Pur calcul Node : ne dépend NI des embeddings NI de pg_trgm. Conçu pour :
+//  - matcher les désignations longues (sous-détails) sans se diluer,
+//  - refuser les correspondances absurdes (étranger / hors-sujet -> "à chiffrer"),
+//  - normaliser les unités hétérogènes (m², m lin, pièce, rouleau…).
 
 const STOP = new Set(
-  'de en le la les du des au aux sur et ou y compris pour avec d l par a type ht mad un une puis sans suivant detail tout toute toutes tous metre carre lineaire ml kg ft'.split(' ')
+  ('de en le la les du des au aux sur et ou y compris pour avec d l par a type ht mad un une puis sans ' +
+   'suivant detail tout toute toutes tous metre carre lineaire ml kg ft hors yc cm mm ep dose dosee joints ' +
+   'pose fourniture preparation support finition technique standard simple ordinaire classique local importation ' +
+   'autre autres divers').split(' ')
 );
 
-// Variantes -> forme canonique (pluriels, fautes, synonymes du bordereau)
 const SYN: Record<string, string> = {
   agglos: 'agglo', agglo: 'agglo', agglomere: 'agglo', agglomeres: 'agglo', parpaing: 'agglo', parpaings: 'agglo',
   briques: 'brique', brik: 'brique',
@@ -14,14 +20,21 @@ const SYN: Record<string, string> = {
   enduits: 'enduit', interieurs: 'interieur', int: 'interieur', exterieurs: 'exterieur',
   isolant: 'isolation', isolante: 'isolation', isolations: 'isolation',
   doublages: 'doublage', peintures: 'peinture', revetements: 'revetement',
+  carrelage: 'carreau', carrelages: 'carreau', carreaux: 'carreau', carreleage: 'carreau',
+  dalles: 'dalle', plinthes: 'plinthe', marches: 'marche', moquettes: 'moquette',
+  ceramique: 'cerame', chapes: 'chape',
   polyurerthane: 'polyurethane', polyurethanne: 'polyurethane',
   vynilique: 'vinylique', vinyl: 'vinylique',
-  carreaux: 'carreau', dalles: 'dalle', plinthes: 'plinthe', marches: 'marche',
-  portes: 'porte', fenetres: 'fenetre', chassis: 'chassis',
+  portes: 'porte', fenetres: 'fenetre',
 };
 
-// Actions/opérations : démolition/dépose ne doivent pas matcher de la pose (et inversement)
 const ACTIONS = new Set('demolition depose decapage decappage grattage piquage curage demontage'.split(' '));
+
+const UMAP: Record<string, string> = {
+  m2: 'M2', mc: 'M2', m3: 'M3', ml: 'ML', mlin: 'ML', mlineaire: 'ML',
+  u: 'U', unite: 'U', piece: 'U', pce: 'U', kg: 'KG', ft: 'FT', forfait: 'FT',
+  rouleau: 'ROULEAU', rlx: 'ROULEAU', l: 'L', litre: 'L', e: 'E',
+};
 
 function deacc(s: string): string {
   return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -44,69 +57,66 @@ function tokenize(s: string): { tk: string[]; nums: Set<string> } {
   }
   return { tk, nums };
 }
-function normUnit(u: string): string {
-  const x = (u || '').toUpperCase().trim();
-  return x === 'M²' ? 'M2' : x;
+function core(desig: string): string {
+  return (desig.split(' - ')[0] || desig).split(/\btype\b/i)[0];
+}
+export function normUnit(u: string): string {
+  const x = deacc(String(u || '')).replace(/[\s.]/g, '');
+  if (x === 'm2' || x === 'm²' || x === 'mc') return 'M2';
+  return UMAP[x] || String(u || '').toUpperCase().trim();
 }
 
 export type Ref = { designation: string; unite: string; prixUnitaire: number };
-type PreparedRef = { ref: Ref; vec: Map<string, number>; norm: number; nums: Set<string>; set: Set<string> };
+type PreparedRef = { ref: Ref; set: Set<string>; nums: Set<string>; mass: number; unite: string };
 export type Matcher = { prepared: PreparedRef[]; idf: Map<string, number>; N: number };
 
-function buildVec(tk: string[], idf: Map<string, number>, N: number): Map<string, number> {
-  const v = new Map<string, number>();
-  const def = Math.log(N) + 1;
-  for (const t of new Set(tk)) v.set(t, idf.get(t) ?? def);
-  return v;
-}
-function vecNorm(v: Map<string, number>): number {
-  let s = 0;
-  for (const x of v.values()) s += x * x;
-  return Math.sqrt(s);
-}
-
-/** Construit le moteur à partir de toute la bibliothèque (calcule l'IDF du corpus). */
 export function construireMatcher(refs: Ref[]): Matcher {
-  const docs = refs.map((r) => tokenize(r.designation));
+  const cores = refs.map((r) => tokenize(core(r.designation)));
   const N = refs.length || 1;
   const df = new Map<string, number>();
-  for (const d of docs) for (const t of new Set(d.tk)) df.set(t, (df.get(t) || 0) + 1);
+  for (const c of cores) for (const t of new Set(c.tk)) df.set(t, (df.get(t) || 0) + 1);
   const idf = new Map<string, number>();
   for (const [t, c] of df) idf.set(t, Math.log(N / (1 + c)) + 1);
+  const def = Math.log(N) + 1;
+  const w = (t: string) => idf.get(t) ?? def;
   const prepared: PreparedRef[] = refs.map((r, i) => {
-    const vec = buildVec(docs[i].tk, idf, N);
-    return { ref: r, vec, norm: vecNorm(vec), nums: docs[i].nums, set: new Set(docs[i].tk) };
+    const set = new Set(cores[i].tk);
+    const full = tokenize(r.designation);
+    let mass = 0;
+    for (const t of set) mass += w(t);
+    return { ref: r, set, nums: full.nums, mass, unite: normUnit(r.unite) };
   });
   return { prepared, idf, N };
 }
 
 export type Resultat = { prixUnitaire: number; designation: string; score: number } | null;
 
-/** Trouve le meilleur prix de la bibliothèque pour une désignation+unité. null si rien de fiable. */
-export function trouverPrix(designation: string, unite: string, m: Matcher, seuil = 0.3): Resultat {
+export function trouverPrix(designation: string, unite: string, m: Matcher, seuil = 0.42): Resultat {
+  const def = Math.log(m.N) + 1;
+  const w = (t: string) => m.idf.get(t) ?? def;
   const { tk, nums: qn } = tokenize(designation);
   if (!tk.length) return null;
-  const qv = buildVec(tk, m.idf, m.N);
-  const qnorm = vecNorm(qv);
   const qset = new Set(tk);
+  let qmass = 0;
+  for (const t of qset) qmass += w(t);
   const u = normUnit(unite);
   const qHasAction = [...qset].some((a) => ACTIONS.has(a));
 
   let best: { score: number; ref: Ref } | null = null;
   for (const p of m.prepared) {
-    if (u && normUnit(p.ref.unite) !== u) continue;
-    // produit scalaire sur les termes communs
-    let num = 0;
-    for (const [t, w] of qv) { const pw = p.vec.get(t); if (pw) num += w * pw; }
-    if (num === 0) continue;
-    let sc = qnorm && p.norm ? num / (qnorm * p.norm) : 0;
-    // nombres (épaisseurs, diamètres) : bonus si commun, malus si divergents
+    if (u && p.unite !== u) continue;
+    let cov = 0;
+    for (const t of qset) if (p.set.has(t)) cov += w(t);
+    if (cov === 0) continue;
+    const overlap = cov / (Math.min(qmass, p.mass) || 1);
+    const jaccard = cov / (qmass + p.mass - cov || 1);
+    let sc = 0.6 * overlap + 0.4 * jaccard;
     if (qn.size && p.nums.size) {
       const commun = [...qn].some((x) => p.nums.has(x));
-      sc += commun ? 0.08 : -0.1;
+      sc += commun ? 0.05 : -0.06;
     }
-    // action : démolition/dépose côté base mais pas demandé -> malus
-    if (!qHasAction) { for (const a of p.set) { if (ACTIONS.has(a)) { sc -= 0.18; break; } } }
+    if (!qHasAction) { for (const a of p.set) { if (ACTIONS.has(a)) { sc -= 0.2; break; } } }
+    if (sc > 1) sc = 1;
     if (!best || sc > best.score) best = { score: sc, ref: p.ref };
   }
   if (best && best.score >= seuil) {

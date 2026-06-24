@@ -53,7 +53,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // 3. Chiffrage depuis la BIBLIOTHÈQUE UNIQUEMENT (traçable). L'IA n'invente aucun prix.
     //    Moteur de correspondance lexical TF-IDF (fiable, sans dépendre des embeddings).
-    const SEUIL = Number(process.env.PRICE_MATCH_THRESHOLD || 0.3);
+    const SEUIL = Number(process.env.PRICE_MATCH_THRESHOLD || 0.42);
     const refs = await prisma.prixReference.findMany({ select: { designation: true, unite: true, prixUnitaire: true }, take: 50000 });
     const matcher = construireMatcher(refs);
     let sansPrix = 0;
