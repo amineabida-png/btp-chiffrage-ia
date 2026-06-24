@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { analyserMarche, extraireArticlesGros, chiffrerArticle, analyserRisques } from '@/lib/ai';
 import { calculerPrix, COEFFICIENTS_DEFAUT } from '@/lib/pricing';
 import { prixSimilaires, apprendrePrix } from '@/lib/learning';
+import { construireMatcher, trouverPrix } from '@/lib/matching';
 import { comparerPlanDQE } from '@/lib/plans';
 
 export const maxDuration = 300;
@@ -51,20 +52,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await prisma.article.deleteMany({ where: { projetId: projet.id } });
 
     // 3. Chiffrage depuis la BIBLIOTHÈQUE UNIQUEMENT (traçable). L'IA n'invente aucun prix.
-    const SEUIL = Number(process.env.PRICE_MATCH_THRESHOLD || 0.58);
+    //    Moteur de correspondance lexical TF-IDF (fiable, sans dépendre des embeddings).
+    const SEUIL = Number(process.env.PRICE_MATCH_THRESHOLD || 0.3);
+    const refs = await prisma.prixReference.findMany({ select: { designation: true, unite: true, prixUnitaire: true }, take: 50000 });
+    const matcher = construireMatcher(refs);
     let sansPrix = 0;
     for (const art of articlesBruts) {
       const designation = String(art.designation || '');
       const unite = String(art.unite || 'U');
       const quantite = Number(art.quantite) || 0;
 
-      const matches = await prixSimilaires(designation, 6);
-      // meilleure correspondance: même unité + score suffisant ; à défaut, score très élevé
-      const best = matches.find((m: any) => (m.unite || '').toUpperCase() === unite.toUpperCase() && m.score >= SEUIL)
-        || (matches[0] && matches[0].score >= 0.85 ? matches[0] : null);
-
+      const match = trouverPrix(designation, unite, matcher, SEUIL);
       let prixUnitaire = 0; let sourcePrix: string | null = null;
-      if (best) { prixUnitaire = best.prixUnitaire; sourcePrix = `${best.designation} (${Math.round(best.score * 100)}%)`; }
+      if (match) { prixUnitaire = match.prixUnitaire; sourcePrix = `${match.designation} (${Math.round(match.score * 100)}%)`; }
       else sansPrix++;
 
       await prisma.article.create({
