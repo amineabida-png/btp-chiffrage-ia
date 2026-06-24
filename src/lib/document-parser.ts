@@ -51,6 +51,8 @@ export async function extraireTexte(buffer: Buffer, mimeType: string, nom: strin
 
 export function detecterTypeDocument(nom: string, texte: string): string {
   const n = nom.toLowerCase(); const t = texte.toLowerCase().slice(0, 5000);
+  const ext = n.split('.').pop() || '';
+  if (['dxf', 'dwg', 'png', 'jpg', 'jpeg', 'webp'].includes(ext)) return 'PLAN';
   if (n.includes('bpu') || n.includes('bordereau')) return 'BPU';
   if (n.includes('dqe') || n.includes('estimatif') || n.includes('quantitatif')) return 'DQE';
   if (n.includes('cps')) return 'CPS';

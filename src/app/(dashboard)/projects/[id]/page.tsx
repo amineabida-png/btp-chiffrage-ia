@@ -7,7 +7,7 @@ function mad(n: number) { return new Intl.NumberFormat('fr-FR', { minimumFractio
 export default function ProjetDetail() {
   const { id } = useParams<{ id: string }>();
   const [projet, setProjet] = useState<any>(null);
-  const [onglet, setOnglet] = useState<'synthese' | 'bordereau' | 'plans' | 'risques'>('synthese');
+  const [onglet, setOnglet] = useState<'synthese' | 'bordereau' | 'plans' | 'risques'>('plans');
   const [uploading, setUploading] = useState(false);
   const [analyse, setAnalyse] = useState(false);
   const [msg, setMsg] = useState('');
@@ -88,9 +88,10 @@ export default function ProjetDetail() {
       <div className="card mb-6 no-print">
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <h3 className="mb-2 font-semibold">1. Importer les documents</h3>
-            <p className="mb-3 text-xs text-slate-500">BPU, DQE, CPS, CCTP, RC, plans PDF, Word, Excel, images scannées.</p>
+            <h3 className="mb-2 font-semibold">1. Importer les plans (et documents)</h3>
+            <p className="mb-3 text-xs text-slate-500">Plans <b>DXF</b> (quantités exactes), <b>PDF</b> ou <b>images</b> → métré automatique. Aussi : BPU, DQE, CPS… Le DWG doit être exporté en DXF/PDF.</p>
             <input type="file" multiple onChange={onUpload} disabled={uploading}
+              accept=".dxf,.dwg,.pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.xls,.csv"
               className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-maroc-vert file:px-4 file:py-2 file:text-white" />
             <div className="mt-3 space-y-1">
               {(projet.documents || []).map((d: any) => (
@@ -127,7 +128,7 @@ export default function ProjetDetail() {
 
       {/* Onglets (non imprimés) */}
       <div className="mb-4 flex gap-2 border-b no-print">
-        {([['synthese', 'Fiche synthèse'], ['bordereau', `Bordereau chiffré (${(projet.articles || []).length})`], ['plans', `Plans & métré (${(projet.metres || []).length})`], ['risques', `Risques & alertes (${(projet.alertes || []).length + (projet.risques || []).length})`]] as const).map(([k, l]) => (
+        {([['synthese', 'Fiche synthèse'], ['bordereau', `Bordereau chiffré (${(projet.articles || []).length})`], ['plans', `Métré (${(projet.metres || []).length})`], ['risques', `Risques & alertes (${(projet.alertes || []).length + (projet.risques || []).length})`]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setOnglet(k)}
             className={`px-4 py-2 text-sm font-medium ${onglet === k ? 'border-b-2 border-maroc-vert text-maroc-vert' : 'text-slate-500'}`}>{l}</button>
         ))}
@@ -197,34 +198,34 @@ export default function ProjetDetail() {
         </div>
       </div>
 
-      {/* SECTION 3 — Plans & métré */}
+      {/* SECTION 3 — Métré détaillé */}
       <div className={sec('plans')}>
-        <h2 className="mb-2 hidden text-lg font-bold print:block">Plans & métré</h2>
+        <h2 className="mb-2 hidden text-lg font-bold print:block">Métré détaillé</h2>
+        <div className="mb-3 flex items-center justify-between no-print">
+          <p className="text-sm text-slate-500">Métré généré automatiquement depuis les plans importés (DXF, PDF ou image).</p>
+          {(projet.metres || []).length > 0 && (
+            <a href={`/api/projects/${projet.id}/metre-export`} className="btn btn-primary whitespace-nowrap">⬇️ Exporter le métré (Excel)</a>
+          )}
+        </div>
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="p-3">Élément détecté</th><th className="p-3">Unité</th>
-                <th className="p-3 text-right">Qté plan</th><th className="p-3 text-right">Qté DQE</th>
-                <th className="p-3 text-right">Écart</th><th className="p-3">Source</th>
+                <th className="p-3">Poste</th><th className="p-3">Ouvrage</th><th className="p-3">Localisation</th>
+                <th className="p-3">U</th><th className="p-3 text-right">Quantité</th>
+                <th className="p-3">Mode de calcul</th><th className="p-3">Observations</th>
               </tr>
             </thead>
             <tbody>
-              {(projet.metres || []).map((m: any) => (
-                <tr key={m.id} className="border-b last:border-0">
-                  <td className="p-3">{m.element}</td>
-                  <td className="p-3">{m.unite}</td>
-                  <td className="p-3 text-right">{m.quantiteDetectee}</td>
-                  <td className="p-3 text-right">{m.quantiteDQE ?? '—'}</td>
-                  <td className={`p-3 text-right font-medium ${m.ecartPourcent != null && Math.abs(m.ecartPourcent) >= 10 ? 'text-maroc-rouge' : 'text-slate-500'}`}>
-                    {m.ecartPourcent != null ? `${m.ecartPourcent > 0 ? '+' : ''}${m.ecartPourcent}%` : '—'}
-                  </td>
-                  <td className="p-3 text-slate-500">{m.source}</td>
-                </tr>
+              {Object.entries(
+                (projet.metres || []).reduce((acc: any, m: any) => { (acc[m.poste || 'Divers'] ||= []).push(m); return acc; }, {})
+              ).map(([poste, lignes]: any) => (
+                <FragmentPoste key={poste} poste={poste} lignes={lignes} />
               ))}
               {(projet.metres || []).length === 0 && (
-                <tr><td colSpan={6} className="p-6 text-center text-slate-400">
-                  Aucun métré. Importez un document nommé « plan… » (PDF ou image) : le métré est extrait automatiquement.
+                <tr><td colSpan={7} className="p-6 text-center text-slate-400">
+                  Aucun métré pour l'instant. Importez un <b>plan</b> (DXF, PDF ou image) : le métré est extrait et structuré automatiquement.
+                  <br />Astuce : le format <b>DXF</b> donne des quantités exactes (géométrie réelle). Le DWG doit être exporté en DXF ou PDF.
                 </td></tr>
               )}
             </tbody>
@@ -260,5 +261,36 @@ export default function ProjetDetail() {
         </div>
       </div>
     </div>
+  );
+}
+
+function FragmentPoste({ poste, lignes }: { poste: string; lignes: any[] }) {
+  // sous-totaux par unité
+  const totaux: Record<string, number> = {};
+  for (const l of lignes) totaux[l.unite] = (totaux[l.unite] || 0) + (Number(l.quantiteDetectee) || 0);
+  const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
+  return (
+    <>
+      <tr className="bg-slate-100/70">
+        <td colSpan={7} className="p-2 px-3 text-xs font-semibold uppercase tracking-wide text-slate-600">{poste}</td>
+      </tr>
+      {lignes.map((m) => (
+        <tr key={m.id} className="border-b last:border-0 align-top">
+          <td className="p-3 text-slate-400">—</td>
+          <td className="p-3 font-medium">{m.element}</td>
+          <td className="p-3 text-slate-500">{m.localisation || '—'}</td>
+          <td className="p-3">{m.unite}</td>
+          <td className="p-3 text-right font-medium">{fmt(m.quantiteDetectee)}</td>
+          <td className="p-3 text-xs text-slate-500">{m.modeCalcul || '—'}</td>
+          <td className="p-3 text-xs text-slate-500">{m.observations || '—'}</td>
+        </tr>
+      ))}
+      <tr className="border-b bg-emerald-50/50 text-xs">
+        <td className="p-2 px-3 text-slate-500" colSpan={4}>Sous-total {poste}</td>
+        <td className="p-2 px-3 text-right font-semibold text-emerald-800" colSpan={3}>
+          {Object.entries(totaux).map(([u, q]) => `${fmt(q)} ${u}`).join('  ·  ')}
+        </td>
+      </tr>
+    </>
   );
 }

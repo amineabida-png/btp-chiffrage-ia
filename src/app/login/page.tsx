@@ -24,7 +24,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
       <div className="card w-full max-w-md">
         <h1 className="mb-1 text-2xl font-bold">Connexion</h1>
-        <p className="mb-6 text-sm text-slate-500">BTP Chiffrage IA — Maroc</p>
+        <p className="mb-6 text-sm text-slate-500">BTP Métré IA — Maroc</p>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="label">Email</label>

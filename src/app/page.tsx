@@ -5,7 +5,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-maroc-nuit to-slate-900 text-white">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2 text-xl font-bold">
-          <span className="text-maroc-rouge">●</span> BTP Chiffrage <span className="text-maroc-vert">IA</span>
+          <span className="text-maroc-rouge">●</span> BTP Métré <span className="text-maroc-vert">IA</span>
         </div>
         <nav className="flex gap-3">
           <Link href="/login" className="btn btn-ghost">Connexion</Link>
@@ -30,11 +30,11 @@ export default function Home() {
 
         <div className="mt-20 grid gap-6 text-left md:grid-cols-3">
           {[
-            ['📄 Analyse automatique', 'Extraction de l\'objet, maître d\'ouvrage, cautions, qualifications, pénalités, délais — conforme au décret 2-22-431.'],
-            ['🧮 Chiffrage IA', 'Déboursé sec, frais de chantier, frais généraux, aléas et marge. Coefficients personnalisables.'],
-            ['⚠️ Détection des risques', 'Score de risque global, alertes de cohérence CPS/BPU et recommandations.'],
-            ['💾 Base de prix Maroc', 'Bâtiment, VRD, assainissement, AEP, routes, génie civil… enrichie à chaque projet.'],
-            ['📊 Exports complets', 'Bordereau chiffré Excel, sous-détails, rapports PDF, conditions du marché.'],
+            ['📐 Métré depuis plans', 'Importez vos plans DXF, PDF ou images : l\'IA produit un métré détaillé et structuré (longueurs, surfaces, volumes, comptages).'],
+            ['📏 Géométrie exacte (DXF)', 'Lecture de la vraie géométrie par calque : longueurs et surfaces calculées précisément, pas devinées.'],
+            ['🏗️ Structuré par poste', 'Ouvrages regroupés par corps d\'état, avec localisation, mode de calcul et observations.'],
+            ['🔎 Lecture des cotes', 'L\'IA exploite en priorité les cotes, nomenclatures et tableaux du plan — jamais de quantité inventée.'],
+            ['📊 Export Excel', 'Métré exportable en Excel, prêt à chiffrer ou à transmettre.'],
             ['👥 Multi-utilisateurs', 'Administrateur, directeur, métreur, chargé d\'étude, consultation.'],
           ].map(([t, d]) => (
             <div key={t} className="card bg-white/5 text-white">
@@ -45,7 +45,7 @@ export default function Home() {
         </div>
       </main>
       <footer className="border-t border-white/10 py-6 text-center text-sm text-slate-400">
-        BTP Chiffrage IA — Estimations indicatives à valider par un métreur.
+        BTP Métré IA — Métré automatique des plans, à valider par un métreur.
       </footer>
     </div>
   );

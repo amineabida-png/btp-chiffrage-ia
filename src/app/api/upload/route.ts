@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { extraireTexte, detecterTypeDocument } from '@/lib/document-parser';
-import { analyserPlan } from '@/lib/plans';
+import { analyserMetre } from '@/lib/metre';
 
 export const maxDuration = 300;
 
@@ -30,16 +30,24 @@ export async function POST(req: Request) {
       },
     });
 
-    // Métré automatique des plans (lecture vision)
+    // MÉTRÉ automatique des plans (DXF géométrie réelle, PDF/image lecture IA)
     if (type === 'PLAN' && process.env.GROQ_API_KEY) {
       try {
-        const { quantites, resume } = await analyserPlan(buffer, file.type, file.name);
-        for (const q of quantites) {
+        const { lignes, resume, avertissement } = await analyserMetre(buffer, file.type, file.name);
+        for (const l of lignes) {
           await prisma.metrePlan.create({
-            data: { element: q.element, unite: q.unite, quantiteDetectee: q.quantite, source: q.source || file.name, projetId },
+            data: {
+              poste: l.poste, element: l.element, localisation: l.localisation || null,
+              unite: l.unite, quantiteDetectee: l.quantite, modeCalcul: l.modeCalcul || null,
+              observations: l.observations || null, source: l.source || file.name, projetId,
+            },
           });
         }
-        if (resume) await prisma.document.update({ where: { id: doc.id }, data: { texteExtrait: (`[MÉTRÉ PLAN] ${resume}\n` + texte).slice(0, 200000) } });
+        const prefix = avertissement ? `[⚠️ ${avertissement}]\n` : (resume ? `[MÉTRÉ] ${resume}\n` : '');
+        if (prefix) await prisma.document.update({ where: { id: doc.id }, data: { texteExtrait: (prefix + texte).slice(0, 200000) } });
+        if (avertissement) {
+          await prisma.alerte.create({ data: { type: 'PLAN_NON_LISIBLE', message: avertissement, gravite: 'MOYEN', projetId } });
+        }
       } catch { /* non bloquant */ }
     }
 

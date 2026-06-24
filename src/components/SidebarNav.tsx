@@ -14,7 +14,7 @@ export default function SidebarNav({ user }: { user: { name?: string; email?: st
   return (
     <aside className="flex w-64 flex-col bg-maroc-nuit text-white">
       <div className="flex items-center gap-2 px-5 py-5 text-lg font-bold">
-        <span className="text-maroc-rouge">●</span> BTP Chiffrage <span className="text-emerald-400">IA</span>
+        <span className="text-maroc-rouge">●</span> BTP Métré <span className="text-emerald-400">IA</span>
       </div>
       <nav className="flex-1 space-y-1 px-3">
         {liens.map((l) => {

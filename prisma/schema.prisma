@@ -185,9 +185,13 @@ model PrixReference {
 // Quantités détectées automatiquement sur les plans (métré)
 model MetrePlan {
   id              String   @id @default(cuid())
-  element         String   // ex: "Béton fondations", "Surface dallage", "Terrassement"
-  unite           String   // M3, M2, ML, KG...
+  poste           String   @default("Divers") // corps d'état / lot
+  element         String   // ouvrage
+  localisation    String?  // ex: "RDC - Chambre 1"
+  unite           String   // M3, M2, ML, KG, U
   quantiteDetectee Float
+  modeCalcul      String?  // formule / origine de la mesure
+  observations    String?
   source          String?  // nom du plan / nature de la détection
   quantiteDQE     Float?   // quantité correspondante au DQE (après comparaison)
   ecartPourcent   Float?   // écart % vs DQE

@@ -3,8 +3,8 @@ import './globals.css';
 import Providers from '@/components/Providers';
 
 export const metadata: Metadata = {
-  title: 'BTP Chiffrage IA — Maroc',
-  description: 'Chiffrage automatique des appels d\'offres BTP au Maroc par intelligence artificielle',
+  title: 'BTP Métré IA — Maroc',
+  description: 'Métré automatique des plans BTP (DXF, PDF, image) par intelligence artificielle',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
